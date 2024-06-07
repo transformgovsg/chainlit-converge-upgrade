@@ -25,6 +25,8 @@ from chainlit.types import (
 )
 from chainlit.user_session import user_sessions
 
+MAX_UI_MESSAGE_LENGTH = 9000
+
 
 def restore_existing_session(sid, session_id, emit_fn, emit_call_fn):
     """Restore a session from the sessionId provided by the client."""
@@ -275,39 +277,23 @@ async def process_message(session: WebsocketSession, payload: MessagePayload):
         await context.emitter.task_end()
 
 
-@sio.on("edit_message")
-async def edit_message(sid, payload: MessagePayload):
-    """Handle a message sent by the User."""
-    session = WebsocketSession.require(sid)
-    context = init_ws_context(session)
+def is_ui_message_valid(payload: MessagePayload) -> bool:
+    content = payload.get('message', {}).get('output', '')
 
-    messages = chat_context.get()
+    if len(content) > MAX_UI_MESSAGE_LENGTH:
+        logger.error("Message of length {} sent to socket".format(len(content)))
+        return False
 
-    orig_message = None
-
-    for message in messages:
-        if orig_message:
-            await message.remove()
-
-        if message.id == payload["message"]["id"]:
-            message.content = payload["message"]["output"]
-            await message.update()
-            orig_message = message
-
-    await context.emitter.task_start()
-
-    if config.code.on_message:
-        try:
-            await config.code.on_message(orig_message)
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await context.emitter.task_end()
+    return True
 
 
 @sio.on("client_message")
 async def message(sid, payload: MessagePayload):
     """Handle a message sent by the User."""
+
+    if not is_ui_message_valid(payload):
+        return
+
     session = WebsocketSession.require(sid)
 
     task = asyncio.create_task(process_message(session, payload))
