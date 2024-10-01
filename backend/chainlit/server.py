@@ -6,6 +6,7 @@ import shutil
 import urllib.parse
 from typing import Any, Optional, Union
 
+from chainlit.auth_ext import jwt_session_tokens
 from chainlit.oauth_providers import get_oauth_provider
 from chainlit.secret import random_secret
 
@@ -17,8 +18,10 @@ import os
 import webbrowser
 from contextlib import asynccontextmanager
 from pathlib import Path
+import socketio
 
-from chainlit.auth import create_jwt, get_configuration, get_current_user
+import jwt
+from chainlit.auth import create_jwt, get_configuration, get_current_user, get_jwt_secret
 from chainlit.config import (
     APP_ROOT,
     BACKEND_ROOT,
@@ -337,6 +340,21 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 @app.post("/logout")
 async def logout(request: Request, response: Response):
+    auth_header = request.headers.get("Authorization")
+
+    if auth_header:
+        _, token = auth_header.split()
+        user_data = jwt.decode(
+            token,
+            get_jwt_secret(),
+            algorithms=["HS256"],
+            options={"verify_signature": True},
+        )
+        email = user_data.get("identifier")
+        if email:
+            # invalidate user session by removing it from cache
+            del jwt_session_tokens[email]
+
     if config.code.on_logout:
         return await config.code.on_logout(request, response)
     return {"success": True}
@@ -474,7 +492,13 @@ async def oauth_callback(
             detail="Unauthorized",
         )
 
+    email = user.identifier
+    jwt_token = jwt_session_tokens.get(email)
+    if jwt_token:
+        del jwt_session_tokens[email]
+
     access_token = create_jwt(user)
+    jwt_session_tokens[email] = access_token
 
     if data_layer := get_data_layer():
         try:

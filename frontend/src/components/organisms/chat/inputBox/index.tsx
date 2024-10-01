@@ -1,6 +1,7 @@
 import { useAuth } from 'api/auth';
 import { memo, useCallback } from 'react';
 import { useSetRecoilState } from 'recoil';
+import { toast } from 'sonner';
 import { v4 as uuidv4 } from 'uuid';
 
 import { Box } from '@mui/material';
@@ -38,13 +39,25 @@ const InputBox = memo(
   }: Props) => {
     const layoutMaxWidth = useLayoutMaxWidth();
     const setInputHistory = useSetRecoilState(inputHistoryState);
+    const maxMessageLength = 9000;
 
     const { user } = useAuth();
     const { sendMessage, replyMessage } = useChatInteract();
     // const tokenCount = useRecoilValue(tokenCountState);
 
+    const isMessageValid = (msg: string) =>
+      msg && msg.length <= maxMessageLength;
+
     const onSubmit = useCallback(
       async (msg: string, attachments?: IAttachment[]) => {
+        if (!isMessageValid(msg)) {
+          const errorMsg =
+            `The message is too long, please reduce to ` +
+            `${maxMessageLength} characters.`;
+          toast.error(errorMsg);
+          return;
+        }
+
         const message: IStep = {
           threadId: '',
           id: uuidv4(),
@@ -83,6 +96,10 @@ const InputBox = memo(
 
     const onReply = useCallback(
       async (msg: string) => {
+        if (!isMessageValid(msg)) {
+          return;
+        }
+
         const message: IStep = {
           threadId: '',
           id: uuidv4(),
