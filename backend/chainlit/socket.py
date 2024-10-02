@@ -268,8 +268,8 @@ async def process_message(session: WebsocketSession, payload: UIMessagePayload):
         await context.emitter.task_end()
 
 
-def is_ui_message_valid(payload: MessagePayload) -> bool:
-    content = payload.get('message', {}).get('output', '')
+def is_ui_message_valid(payload: UIMessagePayload) -> bool:
+    content = payload.get("message", {}).get("output", "")
 
     if len(content) > MAX_UI_MESSAGE_LENGTH:
         logger.error("Message of length {} sent to socket".format(len(content)))
@@ -278,8 +278,8 @@ def is_ui_message_valid(payload: MessagePayload) -> bool:
     return True
 
 
-@sio.on("client_message")
-async def message(sid, payload: MessagePayload):
+@socket.on("client_message")
+async def message(sid, payload: UIMessagePayload):
     """Handle a message sent by the User."""
 
     if not is_ui_message_valid(payload):
