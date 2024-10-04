@@ -20,10 +20,15 @@ import os
 import webbrowser
 from contextlib import asynccontextmanager
 from pathlib import Path
-import socketio
 
 import jwt
-from chainlit.auth import create_jwt, get_configuration, get_current_user, get_jwt_secret
+import socketio
+from chainlit.auth import (
+    create_jwt,
+    get_configuration,
+    get_current_user,
+    get_jwt_secret,
+)
 from chainlit.config import (
     APP_ROOT,
     BACKEND_ROOT,
@@ -416,7 +421,7 @@ async def logout(request: Request, response: Response):
             options={"verify_signature": True},
         )
         email = user_data.get("identifier")
-        if email:
+        if email and jwt_session_tokens.get(email):
             # invalidate user session by removing it from cache
             del jwt_session_tokens[email]
 
