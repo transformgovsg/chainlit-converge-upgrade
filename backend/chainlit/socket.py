@@ -287,7 +287,7 @@ def is_ui_message_valid(payload: UIMessagePayload) -> bool:
     return True
 
 
-@socket.on("client_message")
+@socket.on("ui_message")
 async def message(sid, payload: UIMessagePayload):
     """Handle a message sent by the User."""
 
