@@ -6,13 +6,29 @@ import os
 import re
 import shutil
 import urllib.parse
+from typing import Any, Optional, Union
+
+from chainlit.auth_ext import jwt_session_tokens
+from chainlit.oauth_providers import get_oauth_provider
+from chainlit.secret import random_secret
+
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
+
+import asyncio
+import os
 import webbrowser
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Optional, Union
 
+import jwt
 import socketio
-from chainlit.auth import create_jwt, get_configuration, get_current_user
+from chainlit.auth import (
+    create_jwt,
+    get_configuration,
+    get_current_user,
+    get_jwt_secret,
+)
 from chainlit.config import (
     APP_ROOT,
     BACKEND_ROOT,
@@ -394,9 +410,36 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 @router.post("/logout")
 async def logout(request: Request, response: Response):
-    """Logout the user by calling the on_logout callback."""
+    auth_header = request.headers.get("Authorization")
+
+    if auth_header:
+        _, token = auth_header.split()
+        try:
+            # Decode the token with signature and expiration verification
+            user_data = jwt.decode(
+                token,
+                get_jwt_secret(),
+                algorithms=["HS256"],
+                options={"verify_exp": True}  # Verify expiration
+            )
+            email = user_data.get("identifier")
+            if email and jwt_session_tokens.get(email):
+                # Invalidate user session by removing it from cache
+                del jwt_session_tokens[email]
+
+        except jwt.ExpiredSignatureError:
+            # Token has expired; log the user out but don't try to delete the session
+            return {"success": True, "message": "Token expired, logged out successfully."}
+        except jwt.InvalidTokenError:
+            # Handle invalid token error including invalid signature
+            return {"success": False, "message": "Invalid token."}
+        except jwt.InvalidSignatureError:
+            # Specific handling for invalid signature
+            return {"success": False, "message": "Invalid signature."}
+
     if config.code.on_logout:
         return await config.code.on_logout(request, response)
+
     return {"success": True}
 
 
@@ -536,7 +579,13 @@ async def oauth_callback(
             detail="Unauthorized",
         )
 
+    email = user.identifier
+    jwt_token = jwt_session_tokens.get(email)
+    if jwt_token:
+        del jwt_session_tokens[email]
+
     access_token = create_jwt(user)
+    jwt_session_tokens[email] = access_token
 
     if data_layer := get_data_layer():
         try:

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict
 
 import jwt
+from chainlit.auth_ext import jwt_session_tokens
 from chainlit.config import config
 from chainlit.data import get_data_layer
 from chainlit.oauth_providers import get_configured_oauth_providers
@@ -52,7 +53,8 @@ def create_jwt(data: User) -> str:
     to_encode: Dict[str, Any] = data.to_dict()
     to_encode.update(
         {
-            "exp": datetime.utcnow() + timedelta(minutes=60 * 24 * 15),  # 15 days
+            "exp": datetime.utcnow()
+            + timedelta(seconds=config.project.user_session_timeout),
         }
     )
     encoded_jwt = jwt.encode(to_encode, get_jwt_secret(), algorithm="HS256")
@@ -71,6 +73,13 @@ async def authenticate_user(token: str = Depends(reuseable_oauth)):
         user = User(**dict)
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid authentication token")
+
+    email = user.identifier
+    if not email:
+        raise HTTPException(status_code=401, detail="Missing user identifier")
+    if jwt_session_tokens.get(email) != token:
+        raise HTTPException(status_code=401, detail="Invalid authentication token")
+
     if data_layer := get_data_layer():
         try:
             persisted_user = await data_layer.get_user(user.identifier)

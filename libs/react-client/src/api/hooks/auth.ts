@@ -30,8 +30,8 @@ export const useAuth = () => {
 
   const isReady = !!(!isLoading && authConfig);
 
-  const logout = async (reload = false) => {
-    await apiClient.logout();
+  const logout = async () => {
+    await apiClient.logout(accessToken);
     setUser(null);
     removeToken();
     setAccessToken('');
